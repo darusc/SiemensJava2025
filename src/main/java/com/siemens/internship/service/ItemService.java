@@ -7,17 +7,20 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class ItemService {
     @Autowired
     private ItemRepository itemRepository;
     private static ExecutorService executor = Executors.newFixedThreadPool(10);
-    private List<Item> processedItems = new ArrayList<>();
-    private int processedCount = 0;
+
+    private final List<Item> processedItems = new CopyOnWriteArrayList<>();
+    private AtomicInteger processedCount = new AtomicInteger(0);
 
 
     public List<Item> findAll() {
@@ -56,34 +59,42 @@ public class ItemService {
      * Consider the interaction between Spring's @Async and CompletableFuture
      */
     @Async
-    public List<Item> processItemsAsync() {
+    public CompletableFuture<List<Item>> processItemsAsync() {
 
+        // Clear the processed item list and reset the processed count
+        processedItems.clear();
+        processedCount.set(0);
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         List<Long> itemIds = itemRepository.findAllIds();
 
         for (Long id : itemIds) {
-            CompletableFuture.runAsync(() -> {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
-                    Thread.sleep(100);
-
                     Item item = itemRepository.findById(id).orElse(null);
-                    if (item == null) {
+
+                    // Skip already processed items as well
+                    if (item == null || item.getStatus().equals("PROCESSED")) {
                         return;
                     }
 
-                    processedCount++;
-
                     item.setStatus("PROCESSED");
-                    itemRepository.save(item);
-                    processedItems.add(item);
 
-                } catch (InterruptedException e) {
+                    itemRepository.save(item);
+
+                    // Processed items is now a thread safe synchronized list
+                    processedItems.add(item);
+                    processedCount.incrementAndGet();
+
+                } catch (Exception e) {
                     System.out.println("Error: " + e.getMessage());
                 }
             }, executor);
+
+            futures.add(future);
         }
 
-        return processedItems;
+        // Wait for all items to be processed
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).thenApply(v -> processedItems);
     }
-
 }
-
