@@ -24,7 +24,6 @@ public class Item {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
     private String name;
-    @NotBlank
     private String description;
     private String status;
 
