@@ -32,7 +32,6 @@ public class Item {
     // but by using a custom validator we can add more logic to validations
     // (for example checking if the email is unique in the database, check
     // if it has a valid domain, etc.)
-   //@EmailConstraint
-    @Email(message = "INVALID")
+    @EmailConstraint
     private String email;
 }
