@@ -7,9 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -40,7 +45,7 @@ public class ItemController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Item> updateItem(@PathVariable Long id, @RequestBody Item item) {
+    public ResponseEntity<Item> updateItem(@PathVariable Long id, @Valid @RequestBody Item item) {
         Optional<Item> existingItem = itemService.findById(id);
         if (existingItem.isPresent()) {
             item.setId(id);
@@ -65,5 +70,20 @@ public class ItemController {
     public ResponseEntity<List<Item>> processItems() {
         List<Item> processedItems = itemService.processItemsAsync().join();
         return new ResponseEntity<>(processedItems, HttpStatus.OK);
+    }
+
+    /**
+     * Handle exceptions given by Spring validation
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public Map<String, String> handleValidationExceptions(MethodArgumentNotValidException exception) {
+        Map<String, String> errors = new HashMap<>();
+        exception.getBindingResult().getAllErrors().forEach(error -> {
+            String errorMessage = error.getDefaultMessage();
+            String name = ((FieldError)error).getField();
+            errors.put(name, errorMessage);
+        });
+        return errors;
     }
 }
